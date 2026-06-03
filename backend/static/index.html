@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NZ Building Code Assistant</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 24px; color: #1a1a1a; }
+      h1 { margin-bottom: 2px; }
+      .sub { color: #666; margin-top: 0; font-size: 14px; }
+      form { display: flex; gap: 8px; margin: 18px 0; }
+      input { flex: 1; padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 15px; }
+      button { padding: 10px 16px; border: 0; border-radius: 8px; background: #1a1a1a; color: #fff; cursor: pointer; }
+      button:disabled { opacity: .5; }
+      .answer { background: #f6f6f6; border-radius: 10px; padding: 16px; margin-top: 12px; white-space: pre-wrap; }
+      .cite { display: inline-block; background: #e8eefc; color: #244; border-radius: 6px; padding: 2px 8px; margin: 2px 4px 0 0; font-size: 13px; }
+      .warn { background: #fff7e6; padding: 8px 10px; border-radius: 6px; }
+      .muted { color: #999; font-size: 12px; margin-top: 14px; }
+      .ex { font-size: 13px; color: #555; }
+      .ex a { color: #36c; cursor: pointer; text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <h1>NZ Building Code Assistant</h1>
+    <p class="sub">Ask a question, get an answer grounded in — and citing — specific Building Code clauses.</p>
+    <p class="ex">
+      Try:
+      <a onclick="fillEx(this)">When do I need a barrier on a deck?</a> ·
+      <a onclick="fillEx(this)">What durability period applies to structural elements?</a> ·
+      <a onclick="fillEx(this)">How is weathertightness handled behind cladding?</a> ·
+      <a onclick="fillEx(this)">What's the minimum ceiling height for a bedroom?</a>
+    </p>
+
+    <form id="f">
+      <input id="q" placeholder="e.g. What stops scalding at a bathroom tap?" autocomplete="off" />
+      <button id="btn" type="submit">Ask</button>
+    </form>
+
+    <div id="out"></div>
+
+    <p class="muted">
+      Demo · paraphrased sample clauses · answers via the Claude API over BM25 retrieval. Not legal advice —
+      confirm against the official MBIE Acceptable Solution. NZS&nbsp;3604 (a paid standard) is not included.
+    </p>
+
+    <script>
+      const out = document.getElementById("out");
+      const q = document.getElementById("q");
+      const btn = document.getElementById("btn");
+      function fillEx(a) { q.value = a.textContent.trim(); q.focus(); }
+      function esc(s) { return (s || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+
+      document.getElementById("f").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const question = q.value.trim();
+        if (!question) return;
+        btn.disabled = true;
+        out.innerHTML = "<p>Thinking…</p>";
+        try {
+          const res = await fetch("/ask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question }),
+          });
+          const d = await res.json();
+          if (!res.ok) throw new Error(d.detail || res.statusText);
+          const cites = (d.cited_clauses || []).map((c) => `<span class="cite">${esc(c)}</span>`).join("");
+          const retrieved = (d.retrieved || []).map((r) => `${esc(r.id)} (${r.score})`).join(", ");
+          const grounded = d.grounded
+            ? ""
+            : `<p class="warn">⚠️ Not found in the loaded clauses — the assistant declined to guess.</p>`;
+          out.innerHTML =
+            grounded +
+            `<div class="answer">${esc(d.answer)}</div>` +
+            (cites ? `<p><b>Cited:</b> ${cites}</p>` : "") +
+            `<p class="muted">Retrieved (BM25): ${esc(retrieved)}</p>`;
+        } catch (err) {
+          out.innerHTML = `<p style="color:crimson">Error: ${esc(err.message)}</p>`;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
